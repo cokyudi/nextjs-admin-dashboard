@@ -1,84 +1,47 @@
-'use client'
+ 'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { useUsers } from '@/hooks/use-users';
-import UsersTable from '@/components/users/users-table';
-import UsersFilters from '@/components/users/users-filters';
-import Pagination from '@/components/users/pagination';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useDebounce } from '@/hooks/use-debounce';
+import { useState, useEffect, Suspense } from 'react';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { CreateUserForm } from '@/components/users/create-user-form';
+import { Modal } from '@/components/ui/modal';
+import { UsersPageContainer } from '@/components/users/users-page-container';
+
+function UsersPageWithSuspense({ onAddUserClick }: { onAddUserClick: () => void }) {
+  return (
+    <Suspense fallback={<div className='p-8'>Loading...</div>}>
+      <UsersPageContainer onAddUserClick={onAddUserClick} />
+    </Suspense>
+  );
+}
 
 export default function UsersPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-
-  const initialPage = Number(searchParams.get('page')) || 1;
-  const initialSearch = searchParams.get('search') || '';
-
-  const [page, setPage] = useState(initialPage);
-  const [search, setSearch] = useState(initialSearch);
-
-  const debounceSearch = useDebounce(search, 500);
-
-  const limit = 10;
-
-  const { data, isLoading, isError, isFetching } = useUsers({
-    page,
-    limit,
-    search: debounceSearch,
-  });
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    router.push(`?page=${page}&search=${debounceSearch}`)
-  }, [page, debounceSearch, router]);
+    function onOpen() {
+      setModalOpen(true);
+    }
+    window.addEventListener('open:create-user', onOpen as EventListener);
+    return () =>
+      window.removeEventListener('open:create-user', onOpen as EventListener);
+  }, []);
 
-  useEffect(() => {
-    setPage(1);
-  }, [debounceSearch]);
+  const handleAddUserClick = () => {
+    window.dispatchEvent(new CustomEvent('open:create-user'));
+  };
 
   return (
-    <div className='p-8 max-w-4xl mx-auto'>
-      <Card>
-        <CardHeader>
-          <CardTitle>Users Dashboard</CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-6'>
-          <UsersFilters search={search} setSearch={setSearch} />
-
-          {isLoading && (
-            <div className='space-y-2'>
-              {Array.from({ length: 10 }).map((_, i) => (
-                <Skeleton key={i} className='h-10 w-full' />
-              ))}
-            </div>
-          )}
-
-          {isFetching && (
-            <span className="text-sm text-muted-foreground">
-              Updating...
-            </span>
-          )}
-
-          {isError && (
-            <p className='text-red-500'>Failed to load users.</p>
-          )}
-
-          {!isFetching && data && (
-            <>
-              <UsersTable users={data.users} />
-              <Pagination 
-                page={page}
-                setPage={setPage}
-                total={data.total}
-                limit={limit}
-                isFetching={isFetching}
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
+    <ErrorBoundary>
+      <UsersPageWithSuspense onAddUserClick={handleAddUserClick} />
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title='Create User'>
+        <CreateUserForm
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSuccess={() => {
+            window.dispatchEvent(new CustomEvent('user:created'));
+          }}
+        />
+      </Modal>
+    </ErrorBoundary>
+  );
 }
